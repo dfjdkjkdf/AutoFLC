@@ -1,0 +1,114 @@
+# --- 模型列表配置 ---
+models:
+  - name: "Qwen3-32b"
+    provider: "ali"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key: ""  # ⚠️ 请记得填入你的 Key
+    model_id: "qwen3-32b"
+
+# --- 全局处理设置 ---
+processing:
+  max_retries: 10      # 语法错误最大重试次数
+  min_func_lines: 5   # 忽略小于5行的函数
+  render_timeout: 30  # 渲染超时时间(秒)
+  maxshow_of_completed_aborted: 10 # 成功部分的最大展示数量
+
+# --- 提示词模板 (核心修改部分) ---
+prompts:
+  system: |
+    你是一位精通C语言和PlantUML的文档工程师。请将输入的C语言函数转换为 PlantUML Activity Diagram (Beta) 流程图。
+
+    **关键样式要求（必须严格遵守）**：
+    1. **起点与终点样式**：
+       - **禁止**使用默认的 `start` 和 `stop` 关键字（不要画黑点）。
+       - **必须**使用圆角括号语法表示起点，写法为：`:开始;`
+       - **必须**使用圆角括号语法表示终点，写法为：`:结束;`
+       - 代码中的 `return` 语句应指向 `:结束;`。
+
+    2. **节点内容格式**：
+       - 每个步骤**必须**单独占一行，不要在一行放置多个步骤。
+       - 每个步骤必须包含 **中文意图总结** 和 **关键代码**；
+       - **关键代码** **必须**精简到30个字符内，允许为**空**;
+       - 格式示例：`: **初始化变量** int i = 0;`
+      
+    3. **语法知识提示**
+       - if 判断**必须**遵循PlantUML if语法，禁止使用 C 宏定义语法如"ifdef _INCLUDE_EDA_"；
+       - switch语句default分支**必须**写成 case(default)，禁止直接使用 default;
+       - 循环语句**必须**使用while语法，禁止使用loop和repeat，禁止使用C中的for；
+
+    4. **语法结构示例**：
+       @startuml
+       :开始;
+       if (**指针为空** ptr == NULL) then (是)
+           : **返回错误** return -1;
+           :结束;
+       else (否)
+           : **执行逻辑** do_something();
+       endif
+       while (**循环3次** i < 3)
+          : **执行逻辑** do_something();
+          : **执行逻辑** do_something();
+          : **次数加1** i++;
+       endwhile
+       :结束;
+       @enduml
+
+  fix_syntax: |
+    你生成的 PlantUML 代码有语法错误，请修复。
+
+    **关键样式要求（必须严格遵守）**：
+    1. **起点与终点样式**：
+       - **禁止**使用默认的 `start` 和 `stop` 关键字（不要画黑点）。
+       - **必须**使用圆角括号语法表示起点，写法为：`:开始;`
+       - **必须**使用圆角括号语法表示终点，写法为：`:结束;`
+       - 代码中的 `return` 语句应指向 `:结束;`。
+
+    2. **节点内容格式**：
+       - 每个步骤**必须**单独占一行，不要在一行放置多个步骤。
+       - 判断**必须**遵循PlantUML if语法，禁止使用 C 宏定义语法如"ifdef _INCLUDE_EDA_"；
+       - 每个步骤必须包含 **中文意图总结** 和 **关键代码**；
+       - **关键代码** **必须**精简到30个字符内，允许为**空**;
+       - 格式示例：`: **初始化变量** int i = 0;`
+    
+    3. **语法知识提示**
+       - if 判断**必须**遵循PlantUML if语法，禁止使用 C 宏定义语法如"ifdef _INCLUDE_EDA_"；
+       - switch语句default分支**必须**写成 case(default)，禁止直接使用 default。
+
+    4. **语法结构示例**：
+       @startuml
+       :开始;
+       if (**指针为空** ptr == NULL) then (是)
+           : **返回错误** return -1;
+           :结束;
+       else (否)
+           : **执行逻辑** do_something();
+       endif
+       :结束;
+       @enduml
+
+    错误信息：{error_msg}
+    原始代码：
+    {code}
+    
+    请只返回修复后的 PlantUML 代码，不要包含 markdown 标记。
+
+# --- 用户手册 (支持 Markdown) ---
+manual: |
+  ### Core Features
+  * **Smart Conversion**: Automatically detects C functions and converts them into flowcharts with Chinese annotations.
+  * **Batch Processing**: Automatically finds all C functions in the uploaded ZIP archive and converts them into flowcharts.
+  * **Dynamic Filtering**: Use the sidebar slider to skip simple short functions with one click.
+  * **Auto Correction**: When PlantUML syntax errors occur, the AI automatically retries and attempts to fix them.
+  * **Task Management**: Supports asynchronous background execution and manual cancellation.
+
+  ### Workflow
+  1. **Prepare**: Compress your C project folder (e.g., the `usr` directory) into a `.zip` file.
+  2. **Configure**:
+    * Select an **AI model** in the left sidebar.
+    * Adjust the **Max retries** slider (recommended: 10).
+    * Adjust the **Skip short functions** slider (recommended: 0–5 lines).
+  3. **Run**: In the **"Start a new task"** tab, upload the ZIP file and click **"Start analysis in background"**.
+  4. **Monitor**: Switch to the **"Task monitor"** tab to view live logs.
+    * Click the `>` icon before a log entry to expand and view the detailed code.
+    * Click the red **"Abort task"** button to stop the task at any time.
+  5. **Deliver**: After the task completes, click **"Download results (Zip)"** to get all PNG images.
