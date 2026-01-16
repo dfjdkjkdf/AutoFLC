@@ -1,5 +1,7 @@
 # 🤖 C Code to Flowchart Agent (Dockerized)
 
+https://github.com/user-attachments/assets/821491f9-1f97-4b1c-a1f0-415dcb58db82
+
 This is a Docker-based, enterprise-grade tool that automatically converts C project source code into PlantUML flowcharts. It integrates a Streamlit frontend, a multi-model LLM backend (OpenAI/Ollama), and a PlantUML rendering engine.
 
 ## 📂 Directory Structure
