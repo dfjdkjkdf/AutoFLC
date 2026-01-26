@@ -81,7 +81,7 @@ void CS_HousekeepingCmd(const CS_NoArgsCmd_t *CmdPtr)
 }
 ````
 
-**Output (Flowchart):**
+**Output (Flowchart, labels translated from Chinese to English):**
 
 ![CS_HousekeepingCmd Flowchart](./examples/CS_HousekeepingCmd.png)
 
