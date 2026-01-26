@@ -48,11 +48,12 @@ docker run -d -p 8501:8501 \
 4. **Monitor**: Switch to the **"Task monitor"** tab to view live logs.
    - Click the `>` icon before a log entry to expand and view the detailed code.
    - Click the red **"Abort task"** button to stop the task at any time.
+5. **Deliver**: After the task completes, click **"Download results (Zip)"** to download all PNG images.
 
 ## 🔎 Example: C → Flowchart (CS_HousekeepingCmd)
 
 **Input (C):** 
-```c
+````c
 void CS_HousekeepingCmd(const CS_NoArgsCmd_t *CmdPtr)
 {
     size_t            ExpectedLength = sizeof(CS_NoArgsCmd_t);
@@ -78,7 +79,7 @@ void CS_HousekeepingCmd(const CS_NoArgsCmd_t *CmdPtr)
         CFE_SB_TransmitMsg(CFE_MSG_PTR(CS_AppData.HkPacket.TelemetryHeader), true);
     }
 }
-```
+````
 
 **Output (Flowchart):**
 
@@ -86,4 +87,3 @@ void CS_HousekeepingCmd(const CS_NoArgsCmd_t *CmdPtr)
 
 - Makes error-handling and telemetry path obvious at a glance
 - Helps with code structure comprehension and semantic understanding
-5. **Deliver**: After the task completes, click **"Download results (Zip)"** to download all PNG images.
