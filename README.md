@@ -48,4 +48,42 @@ docker run -d -p 8501:8501 \
 4. **Monitor**: Switch to the **"Task monitor"** tab to view live logs.
    - Click the `>` icon before a log entry to expand and view the detailed code.
    - Click the red **"Abort task"** button to stop the task at any time.
+
+## 🔎 Example: C → Flowchart (CS_HousekeepingCmd)
+
+**Input (C):** 
+```c
+void CS_HousekeepingCmd(const CS_NoArgsCmd_t *CmdPtr)
+{
+    size_t            ExpectedLength = sizeof(CS_NoArgsCmd_t);
+    CFE_SB_MsgId_t    MessageID      = CFE_SB_INVALID_MSG_ID;
+    CFE_MSG_FcnCode_t CommandCode    = 0;
+    size_t            ActualLength   = 0;
+
+    CFE_MSG_GetSize(CFE_MSG_PTR(CmdPtr->CommandHeader), &ActualLength);
+
+    if (ExpectedLength != ActualLength)
+    {
+        CFE_MSG_GetMsgId(CFE_MSG_PTR(CmdPtr->CommandHeader), &MessageID);
+        CFE_MSG_GetFcnCode(CFE_MSG_PTR(CmdPtr->CommandHeader), &CommandCode);
+
+        CFE_EVS_SendEvent(CS_CMD_LEN_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "Invalid msg length: ID = 0x%08lX, CC = %d, Len = %lu, Expected = %lu",
+                          (unsigned long)CFE_SB_MsgIdToValue(MessageID), CommandCode, (unsigned long)ActualLength,
+                          (unsigned long)ExpectedLength);
+    }
+    else
+    {
+        CFE_SB_TimeStampMsg(CFE_MSG_PTR(CS_AppData.HkPacket.TelemetryHeader));
+        CFE_SB_TransmitMsg(CFE_MSG_PTR(CS_AppData.HkPacket.TelemetryHeader), true);
+    }
+}
+```
+
+**Output (Flowchart):**
+
+![CS_HousekeepingCmd Flowchart](./examples/CS_HousekeepingCmd.png)
+
+- Makes error-handling and telemetry path obvious at a glance
+- Helps with code structure comprehension and semantic understanding
 5. **Deliver**: After the task completes, click **"Download results (Zip)"** to download all PNG images.
