@@ -2,7 +2,6 @@
 
 https://github.com/user-attachments/assets/b96810c7-ebde-42c0-9f64-aff5215e16ea
 
-
 This is a Docker-based, enterprise-grade tool that automatically converts C project source code into PlantUML flowcharts. It integrates a Streamlit frontend, a multi-model LLM backend (OpenAI/Ollama), and a PlantUML rendering engine.
 
 ## 📂 Directory Structure
@@ -14,9 +13,23 @@ Make sure your project directory contains the following core files:
 ├── Dockerfile          # Build Docker image
 ├── requirements.txt    # Python dependencies
 ├── app.py              # Run script
-├── config.yaml         # Hyperparameter config, prompts
+├── config.yaml         # Hyperparameter config, prompts, and language settings
 └── history/            # Stores generated images and ZIP packages; folder name matches the task ID
 ````
+
+## 🌐 Language Support
+
+AutoFLC supports **Chinese (`zh`)** and **English (`en`)** for both UI labels and flowchart annotations.
+
+To switch the language, edit **one line** in `config.yaml` and restart the container:
+
+````yaml
+# config.yaml
+language: "en"   # "en" = English flowchart annotations + English UI
+                 # "zh" = 中文流程图注释 + 中文界面
+````
+
+> **Note**: Changing the language affects the AI-generated flowchart node labels, the web UI text, and the user manual simultaneously.
 
 ## 🚀 Deployment and Usage Guide
 
@@ -38,6 +51,14 @@ docker run -d -p 8501:8501 \
   flowchart-agent
 ````
 
+> 💡 `config.yaml` is mounted as a volume, so you can switch languages or update prompts **without rebuilding the image** — just edit the file and restart the container.
+
+### 3. Restart After Config Change
+
+````bash
+docker restart flowchart-dev
+````
+
 ## 📖 User Guide
 
 1. **Prepare**: Compress your C project folder (e.g., the `usr` directory) into a `.zip` file.
@@ -53,38 +74,48 @@ docker run -d -p 8501:8501 \
 
 ## 🔎 Example: C → Flowchart (CS_HousekeepingCmd)
 
-**Input (C):** 
+**Input (C):**
 ````c
-void CS_HousekeepingCmd(const CS_NoArgsCmd_t *CmdPtr)
+CFE_Status_t CS_ReportBaselineAppCmd(const CS_ReportBaselineAppCmd_t *CmdPtr)
 {
-    size_t            ExpectedLength = sizeof(CS_NoArgsCmd_t);
-    CFE_SB_MsgId_t    MessageID      = CFE_SB_INVALID_MSG_ID;
-    CFE_MSG_FcnCode_t CommandCode    = 0;
-    size_t            ActualLength   = 0;
+    /* command verification variables */
+    CS_Res_App_Table_Entry_t *ResultsEntry;
+    uint32                    Baseline;
+    char                      Name[OS_MAX_API_NAME];
 
-    CFE_MSG_GetSize(CFE_MSG_PTR(CmdPtr->CommandHeader), &ActualLength);
+    strncpy(Name, CmdPtr->Payload.Name, sizeof(Name) - 1);
+    Name[sizeof(Name) - 1] = '\0';
 
-    if (ExpectedLength != ActualLength)
+    if (CS_GetAppResTblEntryByName(&ResultsEntry, Name))
     {
-        CFE_MSG_GetMsgId(CFE_MSG_PTR(CmdPtr->CommandHeader), &MessageID);
-        CFE_MSG_GetFcnCode(CFE_MSG_PTR(CmdPtr->CommandHeader), &CommandCode);
-
-        CFE_EVS_SendEvent(CS_CMD_LEN_ERR_EID, CFE_EVS_EventType_ERROR,
-                          "Invalid msg length: ID = 0x%08lX, CC = %d, Len = %lu, Expected = %lu",
-                          (unsigned long)CFE_SB_MsgIdToValue(MessageID), CommandCode, (unsigned long)ActualLength,
-                          (unsigned long)ExpectedLength);
+        if (ResultsEntry->ComputedYet == true)
+        {
+            Baseline = ResultsEntry->ComparisonValue;
+            CFE_EVS_SendEvent(CS_BASELINE_APP_INF_EID, CFE_EVS_EventType_INFORMATION,
+                              "Report baseline of app %s is 0x%08X", Name, (unsigned int)Baseline);
+        }
+        else
+        {
+            CFE_EVS_SendEvent(CS_NO_BASELINE_APP_INF_EID, CFE_EVS_EventType_INFORMATION,
+                              "Report baseline of app %s has not been computed yet", Name);
+        }
+        CS_AppData.HkPacket.Payload.CmdCounter++;
     }
     else
     {
-        CFE_SB_TimeStampMsg(CFE_MSG_PTR(CS_AppData.HkPacket.TelemetryHeader));
-        CFE_SB_TransmitMsg(CFE_MSG_PTR(CS_AppData.HkPacket.TelemetryHeader), true);
+        CFE_EVS_SendEvent(CS_BASELINE_INVALID_NAME_APP_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "App report baseline failed, app %s not found", Name);
+        CS_AppData.HkPacket.Payload.CmdErrCounter++;
     }
+
+    return CFE_SUCCESS;
 }
 ````
 
-**Output (Flowchart, labels translated from Chinese to English):**
+**Output (Flowchart):**
 
-![CS_HousekeepingCmd Flowchart](./examples/CS_HousekeepingCmd.png)
+![CS_HousekeepingCmd Flowchart](./examples/CS_ReportBaselineAppCmd.png)
 
 - Makes error-handling and telemetry path obvious at a glance
+- Supports both **English** and **Chinese** annotation styles via `config.yaml`
 - Helps with code structure comprehension and semantic understanding

@@ -3,19 +3,24 @@ models:
   - name: "Qwen3-32b"
     provider: "ali"
     base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    api_key: ""  # ⚠️ 请记得填入你的 Key
+    api_key: "sk-027ba90a0d894dd2bfe941d753fca20b"  # ⚠️ 请记得填入你的 Key
     model_id: "qwen3-32b"
 
 # --- 全局处理设置 ---
 processing:
-  max_retries: 10      # 语法错误最大重试次数
-  min_func_lines: 5   # 忽略小于5行的函数
-  render_timeout: 30  # 渲染超时时间(秒)
-  maxshow_of_completed_aborted: 10 # 成功部分的最大展示数量
+  max_retries: 10
+  min_func_lines: 5
+  render_timeout: 30
+  maxshow_of_completed_aborted: 10
 
-# --- 提示词模板 (核心修改部分) ---
+# --- 语言设置（⭐ 切换语言只需改这一行）---
+# "zh" = 中文注释流程图
+# "en" = English comment flowchart
+language: "en"
+
+# --- 提示词模板 ---
 prompts:
-  system: |
+  system_zh: |
     你是一位精通C语言和PlantUML的文档工程师。请将输入的C语言函数转换为 PlantUML Activity Diagram (Beta) 流程图。
 
     **关键样式要求（必须严格遵守）**：
@@ -30,7 +35,7 @@ prompts:
        - 每个步骤必须包含 **中文意图总结** 和 **关键代码**；
        - **关键代码** **必须**精简到30个字符内，允许为**空**;
        - 格式示例：`: **初始化变量** int i = 0;`
-      
+
     3. **语法知识提示**
        - if 判断**必须**遵循PlantUML if语法，禁止使用 C 宏定义语法如"ifdef _INCLUDE_EDA_"；
        - switch语句default分支**必须**写成 case(default)，禁止直接使用 default;
@@ -47,13 +52,50 @@ prompts:
        endif
        while (**循环3次** i < 3)
           : **执行逻辑** do_something();
-          : **执行逻辑** do_something();
           : **次数加1** i++;
        endwhile
        :结束;
        @enduml
 
-  fix_syntax: |
+  system_en: |
+    You are a documentation engineer proficient in C language and PlantUML.
+    Convert the input C function into a PlantUML Activity Diagram (Beta) flowchart.
+
+    **Key style requirements (must be strictly followed)**:
+    1. **Start and end node style**:
+       - **Forbidden**: Do NOT use the default `start` and `stop` keywords (no filled circles).
+       - **Required**: Use rounded bracket syntax for the start node: `:Begin;`
+       - **Required**: Use rounded bracket syntax for the end node: `:End;`
+       - All `return` statements in the code should point to `:End;`.
+
+    2. **Node content format**:
+       - Each step **must** occupy its own line; do not place multiple steps on one line.
+       - Each step must contain an **English intent summary** and **key code snippet**;
+       - The **key code snippet** **must** be condensed to within 30 characters, and may be **empty**;
+       - Format example: `: **Initialize variable** int i = 0;`
+
+    3. **Syntax notes**:
+       - `if` conditions **must** follow PlantUML if syntax; do NOT use C macro syntax like `ifdef _INCLUDE_EDA_`;
+       - The `default` branch of a `switch` statement **must** be written as `case(default)`; do NOT use `default` directly;
+       - Loop statements **must** use `while` syntax; do NOT use `loop`, `repeat`, or C-style `for`;
+
+    4. **Syntax structure example**:
+       @startuml
+       :Begin;
+       if (**Pointer is null** ptr == NULL) then (yes)
+           : **Return error** return -1;
+           :End;
+       else (no)
+           : **Execute logic** do_something();
+       endif
+       while (**Loop 3 times** i < 3)
+          : **Execute logic** do_something();
+          : **Increment counter** i++;
+       endwhile
+       :End;
+       @enduml
+
+  fix_syntax_zh: |
     你生成的 PlantUML 代码有语法错误，请修复。
 
     **关键样式要求（必须严格遵守）**：
@@ -69,7 +111,7 @@ prompts:
        - 每个步骤必须包含 **中文意图总结** 和 **关键代码**；
        - **关键代码** **必须**精简到30个字符内，允许为**空**;
        - 格式示例：`: **初始化变量** int i = 0;`
-    
+
     3. **语法知识提示**
        - if 判断**必须**遵循PlantUML if语法，禁止使用 C 宏定义语法如"ifdef _INCLUDE_EDA_"；
        - switch语句default分支**必须**写成 case(default)，禁止直接使用 default。
@@ -89,13 +131,106 @@ prompts:
     错误信息：{error_msg}
     原始代码：
     {code}
-    
+
     请只返回修复后的 PlantUML 代码，不要包含 markdown 标记。
 
-# --- 用户手册 (支持 Markdown) ---
-manual: |
+  fix_syntax_en: |
+    The PlantUML code you generated has syntax errors. Please fix them.
+
+    **Key style requirements (must be strictly followed)**:
+    1. **Start and end node style**:
+       - **Forbidden**: Do NOT use the default `start` and `stop` keywords (no filled circles).
+       - **Required**: Use rounded bracket syntax for the start node: `:Begin;`
+       - **Required**: Use rounded bracket syntax for the end node: `:End;`
+       - All `return` statements should point to `:End;`.
+
+    2. **Node content format**:
+       - Each step **must** occupy its own line; do not place multiple steps on one line.
+       - `if` conditions **must** follow PlantUML if syntax; do NOT use C macro syntax like `ifdef _INCLUDE_EDA_`;
+       - Each step must contain an **English intent summary** and **key code snippet**;
+       - The **key code snippet** **must** be condensed to within 30 characters, and may be **empty**;
+       - Format example: `: **Initialize variable** int i = 0;`
+
+    3. **Syntax notes**:
+       - `if` conditions **must** follow PlantUML if syntax; do NOT use C macro syntax like `ifdef _INCLUDE_EDA_`;
+       - The `default` branch of a `switch` statement **must** be written as `case(default)`; do NOT use `default` directly.
+
+    4. **Syntax structure example**:
+       @startuml
+       :Begin;
+       if (**Pointer is null** ptr == NULL) then (yes)
+           : **Return error** return -1;
+           :End;
+       else (no)
+           : **Execute logic** do_something();
+       endif
+       :End;
+       @enduml
+
+    Error message: {error_msg}
+    Original code:
+    {code}
+
+    Return only the fixed PlantUML code, without any markdown markers.
+
+# --- UI 文字（中英文对照）---
+ui:
+  zh:
+    app_title:        "AutoFLC - C函数流程图生成器"
+    tab_new_task:     "开始新任务"
+    tab_monitor:      "任务监控"
+    label_upload:     "上传 ZIP 文件"
+    label_model:      "AI 模型"
+    label_retries:    "最大重试次数"
+    label_min_lines:  "跳过短函数（行数）"
+    btn_start:        "在后台开始分析"
+    btn_abort:        "中止任务"
+    btn_download:     "下载结果 (Zip)"
+    label_log:        "任务日志"
+    label_status:     "状态"
+    msg_running:      "运行中..."
+    msg_done:         "任务完成"
+    msg_aborted:      "任务已中止"
+    msg_no_task:      "暂无任务"
+    msg_uploading:    "请先上传 ZIP 文件"
+  en:
+    app_title:        "AutoFLC - C Function Flowchart Generator"
+    tab_new_task:     "Start a new task"
+    tab_monitor:      "Task monitor"
+    label_upload:     "Upload ZIP file"
+    label_model:      "AI Model"
+    label_retries:    "Max retries"
+    label_min_lines:  "Skip short functions (lines)"
+    btn_start:        "Start analysis in background"
+    btn_abort:        "Abort task"
+    btn_download:     "Download results (Zip)"
+    label_log:        "Task log"
+    label_status:     "Status"
+    msg_running:      "Running..."
+    msg_done:         "Task completed"
+    msg_aborted:      "Task aborted"
+    msg_no_task:      "No task yet"
+    msg_uploading:    "Please upload a ZIP file first"
+
+# --- 用户手册 ---
+manual_zh: |
+  ### 核心功能
+  * **智能转换**：自动检测 C 函数，将其转换为带有中文注释的流程图。
+  * **批量处理**：自动查找上传 ZIP 包中的所有 C 函数并批量转换为流程图。
+  * **动态过滤**：使用侧边栏滑块，一键跳过简单的短函数。
+  * **自动纠错**：当 PlantUML 语法出错时，AI 自动重试并尝试修复。
+  * **任务管理**：支持异步后台执行，可手动取消任务。
+
+  ### 使用流程
+  1. **准备**：将你的 C 项目文件夹（如 `usr` 目录）压缩为 `.zip` 文件。
+  2. **配置**：在左侧边栏选择 **AI 模型**，调整 **最大重试次数** 和 **跳过短函数** 滑块。
+  3. **运行**：在 **"开始新任务"** 标签页，上传 ZIP 文件并点击 **"在后台开始分析"**。
+  4. **监控**：切换到 **"任务监控"** 标签页查看实时日志，可随时点击 **"中止任务"** 停止。
+  5. **交付**：任务完成后，点击 **"下载结果 (Zip)"** 获取所有 PNG 图片。
+
+manual_en: |
   ### Core Features
-  * **Smart Conversion**: Automatically detects C functions and converts them into flowcharts with Chinese annotations.
+  * **Smart Conversion**: Automatically detects C functions and converts them into flowcharts with English annotations.
   * **Batch Processing**: Automatically finds all C functions in the uploaded ZIP archive and converts them into flowcharts.
   * **Dynamic Filtering**: Use the sidebar slider to skip simple short functions with one click.
   * **Auto Correction**: When PlantUML syntax errors occur, the AI automatically retries and attempts to fix them.
@@ -103,12 +238,7 @@ manual: |
 
   ### Workflow
   1. **Prepare**: Compress your C project folder (e.g., the `usr` directory) into a `.zip` file.
-  2. **Configure**:
-    * Select an **AI model** in the left sidebar.
-    * Adjust the **Max retries** slider (recommended: 10).
-    * Adjust the **Skip short functions** slider (recommended: 0–5 lines).
+  2. **Configure**: Select an **AI model** in the left sidebar, adjust **Max retries** and **Skip short functions** sliders.
   3. **Run**: In the **"Start a new task"** tab, upload the ZIP file and click **"Start analysis in background"**.
-  4. **Monitor**: Switch to the **"Task monitor"** tab to view live logs.
-    * Click the `>` icon before a log entry to expand and view the detailed code.
-    * Click the red **"Abort task"** button to stop the task at any time.
+  4. **Monitor**: Switch to the **"Task monitor"** tab to view live logs, click **"Abort task"** to stop at any time.
   5. **Deliver**: After the task completes, click **"Download results (Zip)"** to get all PNG images.

@@ -30,6 +30,13 @@ TASKS_FILE = os.path.join(HISTORY_DIR, "tasks.json")
 if not os.path.exists(HISTORY_DIR):
     os.makedirs(HISTORY_DIR)
 
+# ===== 语言与文字初始化 =====
+LANG              = CONFIG.get("language", "en")
+SYSTEM_PROMPT     = CONFIG["prompts"][f"system_{LANG}"]
+FIX_SYNTAX_PROMPT = CONFIG["prompts"][f"fix_syntax_{LANG}"]
+MANUAL_TEXT       = CONFIG.get(f"manual_{LANG}", CONFIG.get("manual_en", ""))
+UI                = CONFIG["ui"][LANG]
+
 
 # --- Task tracker ---
 class TaskTracker:
@@ -61,7 +68,7 @@ class TaskTracker:
                 "processed_files": 0,
                 "logs": [],
                 "output_zip": "",
-                "total_success_lines": 0,  # total lines of successfully converted functions
+                "total_success_lines": 0,
             }
             self._save(data)
 
@@ -71,7 +78,7 @@ class TaskTracker:
             if task_id in data:
                 data[task_id]["total_files"] = total
                 self._save(data)
-    
+
     def set_total_success_lines(self, task_id, func):
         with self.lock:
             data = self._load()
@@ -211,7 +218,6 @@ def call_llm(client, model, messages):
         response = client.chat.completions.create(model=model, messages=messages, extra_body={"enable_thinking": False})
     else:
         response = client.chat.completions.create(model=model, messages=messages)
-    
 
     content = response.choices[0].message.content
 
@@ -280,10 +286,9 @@ def background_worker(task_id, zip_path, api_key, base_url, model_id, max_retrie
 
         extract_path = os.path.join(task_dir, "src")
 
-        # Extract ZIP with best-effort filename decoding
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             for member in zip_ref.infolist():
-                encoded_name = member.filename.encode("cp437")  # default ZIP filename encoding
+                encoded_name = member.filename.encode("cp437")
                 decoded_name = None
 
                 for enc in ["gbk", "utf-8", "gb2312", "latin1"]:
@@ -320,7 +325,7 @@ def background_worker(task_id, zip_path, api_key, base_url, model_id, max_retrie
         all_functions = []
         for c_file in c_files:
             relative_path = os.path.relpath(c_file, extract_path)
-            file_name = os.path.splitext(relative_path)[0]  # without .c
+            file_name = os.path.splitext(relative_path)[0]
             with open(c_file, "rb") as f:
                 funcs = extract_functions_from_c(f.read(), logger)
                 for func in funcs:
@@ -348,12 +353,12 @@ def background_worker(task_id, zip_path, api_key, base_url, model_id, max_retrie
             )
 
             try:
-                prompt = CONFIG["prompts"]["system"]
+                # [修改] 使用全局 SYSTEM_PROMPT 变量（已根据语言选择）
                 puml_code = call_llm(
                     client,
                     model_id,
                     [
-                        {"role": "system", "content": prompt},
+                        {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": f"Code:\n{func['code']}"},
                     ],
                 )
@@ -381,11 +386,24 @@ def background_worker(task_id, zip_path, api_key, base_url, model_id, max_retrie
                             err_msg=err_msg,
                         )
                         try:
+                            # [修改] 重试时使用 FIX_SYNTAX_PROMPT
+                            # fix_prompt = FIX_SYNTAX_PROMPT.format(
+                            #     error_msg=err_msg,
+                            #     code=puml_code,
+                            # )
+                            # puml_code = call_llm(
+                            #     client,
+                            #     model_id,
+                            #     [
+                            #         {"role": "system", "content": SYSTEM_PROMPT},
+                            #         {"role": "user", "content": fix_prompt},
+                            #     ],
+                            # )
                             puml_code = call_llm(
                                 client,
                                 model_id,
                                 [
-                                    {"role": "system", "content": prompt},
+                                    {"role": "system", "content": SYSTEM_PROMPT},
                                     {"role": "user", "content": f"Code:\n{func['code']}"},
                                 ],
                             )
@@ -412,7 +430,7 @@ def background_worker(task_id, zip_path, api_key, base_url, model_id, max_retrie
             result_zip_path = os.path.join(HISTORY_DIR, result_zip_name)
             with zipfile.ZipFile(result_zip_path, "w") as zf:
                 for img in output_images:
-                    arcname = os.path.relpath(img, task_dir)  # keep folder structure
+                    arcname = os.path.relpath(img, task_dir)
                     zf.write(img, arcname)
 
             logger.success("All done! Packaged into a zip.")
@@ -432,12 +450,14 @@ def background_worker(task_id, zip_path, api_key, base_url, model_id, max_retrie
 
 
 # --- UI main program ---
-st.set_page_config(page_title="Code to Flowchart Assistant", layout="wide")
-st.title("C Code to Flowchart Assistant")
+# [修改] 页面标题使用 UI 字典
+st.set_page_config(page_title=UI["app_title"], layout="wide")
+st.title(UI["app_title"])
 
 # --- Sidebar ---
 with st.sidebar:
-    st.header("Settings")
+    # [修改] 侧边栏标题和标签
+    st.header(UI["label_status"])
 
     model_list = CONFIG.get("models", [])
     if not model_list:
@@ -445,15 +465,17 @@ with st.sidebar:
         st.stop()
 
     model_map = {m["name"]: m for m in model_list}
-    selected_model_name = st.selectbox("Select AI model", list(model_map.keys()))
+    # [修改] 模型选择标签
+    selected_model_name = st.selectbox(UI["label_model"], list(model_map.keys()))
     selected_config = model_map[selected_model_name]
 
     st.divider()
-    max_retries = st.slider("Max retries", 0, 10, CONFIG["processing"]["max_retries"])
+    # [修改] 滑块标签
+    max_retries = st.slider(UI["label_retries"], 0, 10, CONFIG["processing"]["max_retries"])
 
     default_min_lines = CONFIG["processing"].get("min_func_lines", 5)
     min_lines = st.slider(
-        "Skip short functions (lines < N)",
+        UI["label_min_lines"],
         0,
         100,
         default_min_lines,
@@ -466,7 +488,8 @@ with st.sidebar:
 def render_task_monitor():
     col_head1, col_head2 = st.columns([8, 2])
     with col_head1:
-        st.header("Task Status Monitor")
+        # [修改] 监控标题
+        st.header(UI["tab_monitor"])
     with col_head2:
         st.caption("Live monitoring")
 
@@ -521,13 +544,16 @@ def render_task_monitor():
                     )
                 else:
                     if status == "running":
-                        st.info("Initializing...")
+                        # [修改] 初始化提示
+                        st.info(UI["msg_running"])
                     elif status == "aborted":
-                        st.caption("Task aborted")
+                        # [修改] 中止提示
+                        st.caption(UI["msg_aborted"])
 
             with col2:
                 if status == "running":
-                    if st.button("Abort task", key=f"stop_{tid}", type="primary"):
+                    # [修改] 中止按钮文字
+                    if st.button(UI["btn_abort"], key=f"stop_{tid}", type="primary"):
                         tracker.cancel_task(tid)
                         st.rerun()
 
@@ -535,7 +561,8 @@ def render_task_monitor():
                     zip_path = os.path.join(HISTORY_DIR, info["output_zip"])
                     if os.path.exists(zip_path):
                         with open(zip_path, "rb") as f:
-                            st.download_button("Download results (Zip)", f, file_name=info["output_zip"])
+                            # [修改] 下载按钮文字
+                            st.download_button(UI["btn_download"], f, file_name=info["output_zip"])
 
                 if status in ["completed", "failed", "aborted"]:
                     log_text = "\r\n".join(
@@ -553,7 +580,8 @@ def render_task_monitor():
                     )
 
             st.divider()
-            st.markdown("**Logs**")
+            # [修改] 日志标题
+            st.markdown(f"**{UI['label_log']}**")
 
             logs = info.get("logs", [])
             if logs:
@@ -613,15 +641,18 @@ def render_task_monitor():
                                 if details.get("code"):
                                     st.code(details["code"], language="plantuml")
             else:
-                st.caption("No logs yet.")
+                # [修改] 无日志提示
+                st.caption(UI["msg_no_task"])
 
 
 # --- Main tabs ---
-tab1, tab2, tab3 = st.tabs(["Launch New task", "Task Monitoring", "User Manual"])
+# [修改] 三个 Tab 标题
+tab1, tab2, tab3 = st.tabs([UI["tab_new_task"], UI["tab_monitor"], "User Manual" if LANG == "en" else "用户手册"])
 
 with tab1:
-    uploaded_file = st.file_uploader("Upload a project zip file", type="zip")
-    start_btn = st.button("Start analysis in background")
+    # [修改] 上传组件标签 & 按钮文字
+    uploaded_file = st.file_uploader(UI["label_upload"], type="zip")
+    start_btn = st.button(UI["btn_start"])
 
     if uploaded_file and start_btn:
         api_key = selected_config["api_key"]
@@ -660,5 +691,5 @@ with tab2:
     render_task_monitor()
 
 with tab3:
-    manual_content = CONFIG.get("manual", "### No user manual\nPlease configure the `manual` field in config.yaml.")
-    st.markdown(manual_content)
+    # [修改] 使用语言对应的手册内容
+    st.markdown(MANUAL_TEXT)
