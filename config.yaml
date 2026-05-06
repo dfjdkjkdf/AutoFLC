@@ -2,8 +2,8 @@
 models:
   - name: "Qwen3-32b"
     provider: "ali"
-    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    api_key: "sk-027ba90a0d894dd2bfe941d753fca20b"  # ⚠️ 请记得填入你的 Key
+    base_url: ""
+    api_key: ""  # ⚠️ 请记得填入你的 Key
     model_id: "qwen3-32b"
 
 # --- 全局处理设置 ---
