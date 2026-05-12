@@ -1,6 +1,6 @@
 # 🤖 AutoFLC
 
-https://github.com/user-attachments/assets/0ef52802-fd5e-4db3-8260-09444794a503
+https://github.com/user-attachments/assets/26ba76af-d3f8-46e5-b9cc-9fdef28b29a0
 
 This is a Docker-based, enterprise-grade tool that automatically converts C project source code into PlantUML flowcharts. It integrates a Streamlit frontend, a multi-model LLM backend (OpenAI/Ollama), and a PlantUML rendering engine.
 
