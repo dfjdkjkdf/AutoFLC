@@ -178,7 +178,7 @@ prompts:
 # --- UI 文字（中英文对照）---
 ui:
   zh:
-    app_title:        "AutoFLC - C函数流程图生成器"
+    app_title:        "AutoFLC"
     tab_new_task:     "开始新任务"
     tab_monitor:      "任务监控"
     label_upload:     "上传 ZIP 文件"
@@ -196,7 +196,7 @@ ui:
     msg_no_task:      "暂无任务"
     msg_uploading:    "请先上传 ZIP 文件"
   en:
-    app_title:        "AutoFLC - C Function Flowchart Generator"
+    app_title:        "AutoFLC"
     tab_new_task:     "Start a new task"
     tab_monitor:      "Task monitor"
     label_upload:     "Upload ZIP file"
