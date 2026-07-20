@@ -1,0 +1,13 @@
+.git/
+.github/
+tests/
+history/
+exp/
+examples/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+requirements-dev.txt
+pyproject.toml
+README.md

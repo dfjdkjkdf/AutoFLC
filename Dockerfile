@@ -12,7 +12,9 @@ RUN apt-get update && apt-get install -y \
     fonts-wqy-zenhei \
     && rm -rf /var/lib/apt/lists/*
 
-RUN wget https://github.com/plantuml/plantuml/releases/download/v1.2024.3/plantuml-1.2024.3.jar -O plantuml.jar
+RUN mkdir -p /opt/plantuml \
+    && wget https://github.com/plantuml/plantuml/releases/download/v1.2024.3/plantuml-1.2024.3.jar -O /opt/plantuml/plantuml.jar
+ENV PLANTUML_JAR=/opt/plantuml/plantuml.jar
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple

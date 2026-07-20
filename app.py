@@ -1,462 +1,34 @@
-import streamlit as st
-import os
-import yaml
-import zipfile
-import shutil
-import subprocess
-import time
 import datetime
-from zoneinfo import ZoneInfo
-import json
-import threading
+import os
 import re
-from openai import OpenAI
-from tree_sitter_languages import get_language, get_parser
+import threading
+import time
+from zoneinfo import ZoneInfo
 
+import streamlit as st
 
-# --- Config loading ---
-def load_config():
-    if os.path.exists("config.yaml"):
-        with open("config.yaml", "r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
-    return {"models": [], "processing": {}, "prompts": {}, "manual": ""}
+from autoflc.config import get_language_strings, load_config, resolve_api_key
+from autoflc.github_source import GithubSourceError, fetch_github_zip, parse_github_url
+from autoflc.task_tracker import TaskTracker
+from autoflc.worker import background_worker
 
+PLANTUML_JAR = os.environ.get("PLANTUML_JAR", "plantuml.jar")
+HISTORY_DIR = "history"
+
+os.makedirs(HISTORY_DIR, exist_ok=True)
 
 CONFIG = load_config()
-PLANTUML_JAR = "plantuml.jar"
-HISTORY_DIR = "history"
-TASKS_FILE = os.path.join(HISTORY_DIR, "tasks.json")
+STRINGS = get_language_strings(CONFIG)
+UI = STRINGS.ui
 
-if not os.path.exists(HISTORY_DIR):
-    os.makedirs(HISTORY_DIR)
-
-# ===== 语言与文字初始化 =====
-LANG              = CONFIG.get("language", "en")
-SYSTEM_PROMPT     = CONFIG["prompts"][f"system_{LANG}"]
-FIX_SYNTAX_PROMPT = CONFIG["prompts"][f"fix_syntax_{LANG}"]
-MANUAL_TEXT       = CONFIG.get(f"manual_{LANG}", CONFIG.get("manual_en", ""))
-UI                = CONFIG["ui"][LANG]
-
-
-# --- Task tracker ---
-class TaskTracker:
-    def __init__(self):
-        self.lock = threading.Lock()
-        if not os.path.exists(TASKS_FILE):
-            self._save({})
-
-    def _load(self):
-        try:
-            with open(TASKS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return {}
-
-    def _save(self, data):
-        with open(TASKS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-
-    def create_task(self, task_id, total_files, model_display_name, zip_name):
-        with self.lock:
-            data = self._load()
-            data[task_id] = {
-                "status": "running",
-                "created_at": datetime.datetime.now(tz=ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S"),
-                "model_name": model_display_name,
-                "zip_name": zip_name,
-                "total_files": total_files,
-                "processed_files": 0,
-                "logs": [],
-                "output_zip": "",
-                "total_success_lines": 0,
-            }
-            self._save(data)
-
-    def set_total_files(self, task_id, total):
-        with self.lock:
-            data = self._load()
-            if task_id in data:
-                data[task_id]["total_files"] = total
-                self._save(data)
-
-    def set_total_success_lines(self, task_id, func):
-        with self.lock:
-            data = self._load()
-            if task_id in data:
-                if "total_success_lines" in data[task_id] and "line_count" in func:
-                    data[task_id]["total_success_lines"] += func["line_count"]
-                    self._save(data)
-
-    def add_log(self, task_id, level, message, details=None):
-        with self.lock:
-            data = self._load()
-            if task_id in data:
-                timestamp = datetime.datetime.now(tz=ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
-                log_entry = {"ts": timestamp, "level": level, "msg": message, "details": details}
-                data[task_id]["logs"].append(log_entry)
-                self._save(data)
-
-    def update_progress(self, task_id, processed_count):
-        with self.lock:
-            data = self._load()
-            if task_id in data:
-                data[task_id]["processed_files"] = processed_count
-                self._save(data)
-
-    def finish_task(self, task_id, zip_path):
-        with self.lock:
-            data = self._load()
-            if task_id in data:
-                if data[task_id]["status"] == "aborted":
-                    return
-                data[task_id]["status"] = "completed"
-                data[task_id]["output_zip"] = zip_path
-                data[task_id]["processed_files"] = data[task_id]["total_files"]
-                self._save(data)
-
-    def fail_task(self, task_id, error_msg):
-        with self.lock:
-            data = self._load()
-            if task_id in data:
-                if data[task_id]["status"] == "aborted":
-                    return
-                data[task_id]["status"] = "failed"
-                self.add_log(task_id, "error", f"Task terminated: {error_msg}")
-                self._save(data)
-
-    def cancel_task(self, task_id):
-        with self.lock:
-            data = self._load()
-            if task_id in data and data[task_id]["status"] == "running":
-                data[task_id]["status"] = "aborted"
-                timestamp = datetime.datetime.now(tz=ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
-                data[task_id]["logs"].append(
-                    {"ts": timestamp, "level": "warning", "msg": "Task aborted by user", "details": None}
-                )
-                self._save(data)
-
-    def get_status(self, task_id):
-        data = self._load()
-        return data.get(task_id, {}).get("status", "unknown")
-
-    def get_all_tasks(self):
-        return self._load()
-
-
-tracker = TaskTracker()
-
-
-# --- Background logger ---
-class BackgroundLogger:
-    def __init__(self, task_id, tracker):
-        self.task_id = task_id
-        self.tracker = tracker
-
-    def info(self, message):
-        self.tracker.add_log(self.task_id, "info", message)
-
-    def success(self, message, image_path=None):
-        details = {"image_path": image_path} if image_path else None
-        self.tracker.add_log(self.task_id, "success", message, details)
-
-    def warning(self, message, code=None, err_msg=None):
-        details = {"code": code, "err_msg": err_msg} if code or err_msg else None
-        self.tracker.add_log(self.task_id, "warning", message, details)
-
-    def error(self, message, code=None, err_msg=None):
-        details = {"code": code, "err_msg": err_msg} if code or err_msg else None
-        self.tracker.add_log(self.task_id, "error", message, details)
-
-
-# --- Core functions ---
-def get_func_name_from_node(node, code_bytes):
-    try:
-        curr = node.child_by_field_name("declarator")
-        while curr:
-            if curr.type == "identifier":
-                return code_bytes[curr.start_byte : curr.end_byte].decode("utf-8", errors="ignore")
-            if curr.type == "pointer_declarator":
-                curr = curr.child_by_field_name("declarator")
-                continue
-            if curr.type == "function_declarator":
-                curr = curr.child_by_field_name("declarator")
-                continue
-            if curr.type == "parenthesized_declarator":
-                curr = curr.child_by_field_name("declarator")
-                continue
-            break
-        return None
-    except:
-        return None
-
-
-def extract_functions_from_c(code_bytes, logger=None):
-    try:
-        language = get_language("c")
-        parser = get_parser("c")
-        tree = parser.parse(code_bytes)
-        root_node = tree.root_node
-        functions = []
-        query = language.query("(function_definition) @func_def")
-        captures = query.captures(root_node)
-        for node, tag in captures:
-            if tag == "func_def":
-                func_name = get_func_name_from_node(node, code_bytes)
-                if func_name:
-                    func_code = code_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="ignore")
-                    line_count = len(func_code.split("\n"))
-                    functions.append({"name": func_name, "code": func_code, "line_count": line_count})
-        return functions
-    except Exception as e:
-        if logger:
-            logger.error(f"Tree-sitter parse error: {str(e)}")
-        return []
-
-
-def call_llm(client, model, messages):
-    if 'qwen3' in model:
-        response = client.chat.completions.create(model=model, messages=messages, extra_body={"enable_thinking": False})
-    else:
-        response = client.chat.completions.create(model=model, messages=messages)
-
-    content = response.choices[0].message.content
-
-    if "```plantuml" in content:
-        content = content.split("```plantuml")[1].split("```")[0].strip()
-    elif "```" in content:
-        content = content.split("```")[1].strip()
-
-    if "@startuml" in content:
-        content = content[content.index("@startuml") :]
-    if "@enduml" in content:
-        content = content[: content.index("@enduml") + len("@enduml")]
-
-    if not content.strip().startswith("@startuml"):
-        content = "@startuml\n" + content
-    if not content.strip().endswith("@enduml"):
-        content = content + "\n@enduml"
-
-    return content
-
-
-def render_plantuml(puml_content, output_path):
-    abs_jar_path = os.path.abspath(PLANTUML_JAR)
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".puml", delete=False, encoding="utf-8") as tmp:
-        tmp.write(puml_content)
-        tmp_path = tmp.name
-
-    try:
-        cmd = ["java", "-jar", abs_jar_path, "-charset", "UTF-8", "-tpng", tmp_path]
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=CONFIG["processing"].get("render_timeout", 30),
-        )
-
-        if result.stderr and ("Error" in result.stderr or "Syntax" in result.stderr):
-            return False, f"PlantUML syntax error: {result.stderr}"
-
-        expected_output = tmp_path.replace(".puml", ".png")
-        if os.path.exists(expected_output) and os.path.getsize(expected_output) > 0:
-            shutil.move(expected_output, output_path)
-            return True, None
-        else:
-            return False, f"Generation failed (no output): {result.stderr}"
-    except Exception as e:
-        return False, str(e)
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-
-# --- Background worker thread ---
-def background_worker(task_id, zip_path, api_key, base_url, model_id, max_retries, min_lines):
-    logger = BackgroundLogger(task_id, tracker)
-    task_dir = os.path.join(HISTORY_DIR, task_id)
-    os.makedirs(task_dir, exist_ok=True)
-
-    logger.info(f"Task ID: {task_id}")
-    logger.info("Background processing started...")
-
-    try:
-        client = OpenAI(api_key=api_key, base_url=base_url)
-
-        extract_path = os.path.join(task_dir, "src")
-
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            for member in zip_ref.infolist():
-                encoded_name = member.filename.encode("cp437")
-                decoded_name = None
-
-                for enc in ["gbk", "utf-8", "gb2312", "latin1"]:
-                    try:
-                        decoded_name = encoded_name.decode(enc)
-                        if any(ord(c) > 127 for c in decoded_name):
-                            break
-                    except:
-                        continue
-                decoded_name = decoded_name or encoded_name.decode("utf-8", errors="replace")
-
-                target_path = os.path.join(extract_path, decoded_name)
-
-                if member.is_dir():
-                    os.makedirs(target_path, exist_ok=True)
-                    continue
-
-                os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                with zip_ref.open(member, "r") as source, open(target_path, "wb") as target:
-                    shutil.copyfileobj(source, target)
-
-        if tracker.get_status(task_id) == "aborted":
-            return
-
-        c_files = []
-        for root, dirs, files in os.walk(extract_path):
-            dirs[:] = [d for d in dirs if d != "__MACOSX"]
-            for file in files:
-                if file.endswith(".c") and not file.startswith("._"):
-                    c_files.append(os.path.join(root, file))
-
-        logger.info(f"Scan completed: found {len(c_files)} C files.")
-
-        all_functions = []
-        for c_file in c_files:
-            relative_path = os.path.relpath(c_file, extract_path)
-            file_name = os.path.splitext(relative_path)[0]
-            with open(c_file, "rb") as f:
-                funcs = extract_functions_from_c(f.read(), logger)
-                for func in funcs:
-                    if len(func["code"].split("\n")) >= min_lines:
-                        func["source_file"] = file_name
-                        all_functions.append(func)
-
-        total_funcs = len(all_functions)
-        tracker.set_total_files(task_id, total_funcs)
-        logger.info(
-            f"Extracted {total_funcs} functions (skipped functions with <{min_lines} lines). Starting generation..."
-        )
-
-        output_images = []
-
-        for idx, func in enumerate(all_functions):
-            if tracker.get_status(task_id) == "aborted":
-                logger.warning("Abort signal detected. Stopping.")
-                return
-
-            func_name = func["name"]
-            line_count = func.get("line_count", "N/A")
-            logger.info(
-                f"Processing: {func_name} | Source: {func.get('source_file', 'N/A')} | Lines: {line_count}"
-            )
-
-            try:
-                # [修改] 使用全局 SYSTEM_PROMPT 变量（已根据语言选择）
-                puml_code = call_llm(
-                    client,
-                    model_id,
-                    [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": f"Code:\n{func['code']}"},
-                    ],
-                )
-
-                source_file = func["source_file"]
-                source_dir = os.path.join(task_dir, source_file)
-                os.makedirs(source_dir, exist_ok=True)
-                out_path = os.path.join(source_dir, f"{func_name}.png")
-
-                success = False
-                err_msg = ""
-
-                for attempt in range(max_retries + 1):
-                    if tracker.get_status(task_id) == "aborted":
-                        return
-
-                    success, err_msg = render_plantuml(puml_code, out_path)
-                    if success:
-                        break
-
-                    if attempt < max_retries:
-                        logger.warning(
-                            f"[Retry {attempt+1}] Syntax issue detected. Regenerating...",
-                            code=puml_code,
-                            err_msg=err_msg,
-                        )
-                        try:
-                            # [修改] 重试时使用 FIX_SYNTAX_PROMPT
-                            # fix_prompt = FIX_SYNTAX_PROMPT.format(
-                            #     error_msg=err_msg,
-                            #     code=puml_code,
-                            # )
-                            # puml_code = call_llm(
-                            #     client,
-                            #     model_id,
-                            #     [
-                            #         {"role": "system", "content": SYSTEM_PROMPT},
-                            #         {"role": "user", "content": fix_prompt},
-                            #     ],
-                            # )
-                            puml_code = call_llm(
-                                client,
-                                model_id,
-                                [
-                                    {"role": "system", "content": SYSTEM_PROMPT},
-                                    {"role": "user", "content": f"Code:\n{func['code']}"},
-                                ],
-                            )
-                        except:
-                            break
-
-                if success:
-                    output_images.append(out_path)
-                    logger.success(f"{func_name}.png", image_path=out_path)
-                    tracker.set_total_success_lines(task_id, func)
-                else:
-                    logger.error(f"{func_name} failed", code=puml_code, err_msg=err_msg)
-
-            except Exception as e:
-                logger.error(f"{func_name} LLM error: {str(e)}")
-
-            tracker.update_progress(task_id, idx + 1)
-
-        if tracker.get_status(task_id) == "aborted":
-            return
-
-        if output_images:
-            result_zip_name = f"flowcharts_{task_id}.zip"
-            result_zip_path = os.path.join(HISTORY_DIR, result_zip_name)
-            with zipfile.ZipFile(result_zip_path, "w") as zf:
-                for img in output_images:
-                    arcname = os.path.relpath(img, task_dir)
-                    zf.write(img, arcname)
-
-            logger.success("All done! Packaged into a zip.")
-            tracker.finish_task(task_id, result_zip_name)
-        else:
-            logger.warning("No valid images were generated.")
-            tracker.fail_task(task_id, "No output images")
-
-    except Exception as e:
-        tracker.fail_task(task_id, f"Global exception: {str(e)}")
-    finally:
-        try:
-            if os.path.exists(zip_path):
-                os.remove(zip_path)
-        except:
-            pass
-
+tracker = TaskTracker(os.path.join(HISTORY_DIR, "tasks.json"))
 
 # --- UI main program ---
-# [修改] 页面标题使用 UI 字典
 st.set_page_config(page_title=UI["app_title"], layout="wide")
 st.title(UI["app_title"])
 
 # --- Sidebar ---
 with st.sidebar:
-    # [修改] 侧边栏标题和标签
     st.header(UI["label_status"])
 
     model_list = CONFIG.get("models", [])
@@ -465,12 +37,10 @@ with st.sidebar:
         st.stop()
 
     model_map = {m["name"]: m for m in model_list}
-    # [修改] 模型选择标签
     selected_model_name = st.selectbox(UI["label_model"], list(model_map.keys()))
     selected_config = model_map[selected_model_name]
 
     st.divider()
-    # [修改] 滑块标签
     max_retries = st.slider(UI["label_retries"], 0, 10, CONFIG["processing"]["max_retries"])
 
     default_min_lines = CONFIG["processing"].get("min_func_lines", 5)
@@ -488,7 +58,6 @@ with st.sidebar:
 def render_task_monitor():
     col_head1, col_head2 = st.columns([8, 2])
     with col_head1:
-        # [修改] 监控标题
         st.header(UI["tab_monitor"])
     with col_head2:
         st.caption("Live monitoring")
@@ -544,15 +113,12 @@ def render_task_monitor():
                     )
                 else:
                     if status == "running":
-                        # [修改] 初始化提示
                         st.info(UI["msg_running"])
                     elif status == "aborted":
-                        # [修改] 中止提示
                         st.caption(UI["msg_aborted"])
 
             with col2:
                 if status == "running":
-                    # [修改] 中止按钮文字
                     if st.button(UI["btn_abort"], key=f"stop_{tid}", type="primary"):
                         tracker.cancel_task(tid)
                         st.rerun()
@@ -561,7 +127,6 @@ def render_task_monitor():
                     zip_path = os.path.join(HISTORY_DIR, info["output_zip"])
                     if os.path.exists(zip_path):
                         with open(zip_path, "rb") as f:
-                            # [修改] 下载按钮文字
                             st.download_button(UI["btn_download"], f, file_name=info["output_zip"])
 
                 if status in ["completed", "failed", "aborted"]:
@@ -580,7 +145,6 @@ def render_task_monitor():
                     )
 
             st.divider()
-            # [修改] 日志标题
             st.markdown(f"**{UI['label_log']}**")
 
             logs = info.get("logs", [])
@@ -641,55 +205,93 @@ def render_task_monitor():
                                 if details.get("code"):
                                     st.code(details["code"], language="plantuml")
             else:
-                # [修改] 无日志提示
                 st.caption(UI["msg_no_task"])
 
 
 # --- Main tabs ---
-# [修改] 三个 Tab 标题
-tab1, tab2, tab3 = st.tabs([UI["tab_new_task"], UI["tab_monitor"], "User Manual" if LANG == "en" else "用户手册"])
+manual_tab_label = "User Manual" if STRINGS.lang == "en" else "用户手册"
+tab1, tab2, tab3 = st.tabs([UI["tab_new_task"], UI["tab_monitor"], manual_tab_label])
 
 with tab1:
-    # [修改] 上传组件标签 & 按钮文字
-    uploaded_file = st.file_uploader(UI["label_upload"], type="zip")
+    input_source = st.radio(
+        UI["label_input_source"],
+        ["zip", "github"],
+        format_func=lambda v: UI["option_upload_zip"] if v == "zip" else UI["option_github_link"],
+        horizontal=True,
+    )
+
+    uploaded_file = None
+    github_url = ""
+    if input_source == "zip":
+        uploaded_file = st.file_uploader(UI["label_upload"], type="zip")
+    else:
+        github_url = st.text_input(
+            UI["label_github_url"],
+            placeholder="https://github.com/owner/repo or https://github.com/owner/repo/tree/branch",
+        )
+
     start_btn = st.button(UI["btn_start"])
 
-    if uploaded_file and start_btn:
-        api_key = selected_config["api_key"]
-        base_url = selected_config["base_url"]
-        model_id = selected_config["model_id"]
-
-        if not api_key:
-            st.error("Configuration error: API key is missing for the selected model.")
+    if start_btn:
+        if input_source == "zip" and not uploaded_file:
+            st.warning(UI["msg_uploading"])
+        elif input_source == "github" and not github_url.strip():
+            st.warning(UI["msg_enter_github_url"])
         else:
-            timestamp = datetime.datetime.now(tz=ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H-%M-%S")
+            api_key = resolve_api_key(selected_config)
+            base_url = selected_config["base_url"]
+            model_id = selected_config["model_id"]
 
-            raw_name = uploaded_file.name
-            safe_name = re.sub(r"[^\w\.-]", "_", raw_name)
-            if safe_name.lower().endswith(".zip"):
-                safe_name = safe_name[:-4]
+            if not api_key:
+                st.error("Configuration error: API key is missing for the selected model.")
+            else:
+                timestamp = datetime.datetime.now(tz=ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H-%M-%S")
+                temp_zip_path = None
 
-            task_id = f"{timestamp} {safe_name}"
+                if input_source == "zip":
+                    raw_name = uploaded_file.name
+                    safe_name = re.sub(r"[^\w\.-]", "_", raw_name)
+                    if safe_name.lower().endswith(".zip"):
+                        safe_name = safe_name[:-4]
 
-            temp_zip_path = os.path.join(HISTORY_DIR, f"upload_{task_id}.zip")
-            with open(temp_zip_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
+                    task_id = f"{timestamp} {safe_name}"
+                    temp_zip_path = os.path.join(HISTORY_DIR, f"upload_{task_id}.zip")
+                    with open(temp_zip_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    zip_name = uploaded_file.name
+                else:
+                    try:
+                        with st.spinner(UI["msg_resolving_github"]):
+                            ref = parse_github_url(github_url.strip())
+                            safe_name = re.sub(r"[^\w.-]", "_", f"{ref.owner}_{ref.repo}_{ref.ref}")
+                            task_id = f"{timestamp} {safe_name}"
+                            temp_zip_path = fetch_github_zip(github_url.strip(), HISTORY_DIR)
+                        zip_name = f"{ref.owner}/{ref.repo}@{ref.ref}"
+                    except GithubSourceError as e:
+                        st.error(f"{UI['msg_github_fetch_failed']}: {e}")
 
-            tracker.create_task(task_id, 0, selected_model_name, uploaded_file.name)
+                if temp_zip_path:
+                    tracker.create_task(task_id, 0, selected_model_name, zip_name)
 
-            thread = threading.Thread(
-                target=background_worker,
-                args=(task_id, temp_zip_path, api_key, base_url, model_id, max_retries, min_lines),
-            )
-            thread.start()
+                    thread = threading.Thread(
+                        target=background_worker,
+                        args=(task_id, temp_zip_path, api_key, base_url, model_id, max_retries, min_lines),
+                        kwargs=dict(
+                            tracker=tracker,
+                            history_dir=HISTORY_DIR,
+                            system_prompt=STRINGS.system_prompt,
+                            plantuml_jar=PLANTUML_JAR,
+                            render_timeout=CONFIG["processing"].get("render_timeout", 30),
+                        ),
+                    )
+                    thread.start()
 
-            st.success(f"Task {task_id} submitted!")
-            time.sleep(1)
-            st.rerun()
+                    st.success(f"Task {task_id} submitted!")
+                    time.sleep(1)
+                    st.rerun()
 
 with tab2:
     render_task_monitor()
 
 with tab3:
-    # [修改] 使用语言对应的手册内容
-    st.markdown(MANUAL_TEXT)
+    st.markdown(STRINGS.manual_text)

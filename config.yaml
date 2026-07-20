@@ -1,10 +1,10 @@
 # --- 模型列表配置 ---
 models:
   - name: "Qwen3-32b"
-    provider: "ali"
-    base_url: ""
-    api_key: ""  # ⚠️ 请记得填入你的 Key
-    model_id: "qwen3-32b"
+    provider: "openrouter"
+    base_url: "https://openrouter.ai/api/v1"
+    api_key: ""  # ⚠️ leave empty here; set via the AUTOFLC_API_KEY (or AUTOFLC_API_KEY_QWEN3_32B) env var instead
+    model_id: "qwen/qwen3-32b"
 
 # --- 全局处理设置 ---
 processing:
@@ -16,7 +16,7 @@ processing:
 # --- 语言设置（⭐ 切换语言只需改这一行）---
 # "zh" = 中文注释流程图
 # "en" = English comment flowchart
-language: "en"
+language: "zh"
 
 # --- 提示词模板 ---
 prompts:
@@ -195,6 +195,13 @@ ui:
     msg_aborted:      "任务已中止"
     msg_no_task:      "暂无任务"
     msg_uploading:    "请先上传 ZIP 文件"
+    label_input_source: "输入来源"
+    option_upload_zip:  "上传 ZIP"
+    option_github_link: "GitHub 链接"
+    label_github_url:   "GitHub 仓库链接"
+    msg_enter_github_url: "请先输入 GitHub 链接。"
+    msg_github_fetch_failed: "获取 GitHub 链接失败"
+    msg_resolving_github: "正在解析 GitHub 链接..."
   en:
     app_title:        "AutoFLC"
     tab_new_task:     "Start a new task"
@@ -213,6 +220,13 @@ ui:
     msg_aborted:      "Task aborted"
     msg_no_task:      "No task yet"
     msg_uploading:    "Please upload a ZIP file first"
+    label_input_source: "Input source"
+    option_upload_zip:  "Upload ZIP"
+    option_github_link: "GitHub link"
+    label_github_url:   "GitHub repository URL"
+    msg_enter_github_url: "Please enter a GitHub URL first."
+    msg_github_fetch_failed: "Failed to fetch GitHub link"
+    msg_resolving_github: "Resolving GitHub link..."
 
 # --- 用户手册 ---
 manual_zh: |
