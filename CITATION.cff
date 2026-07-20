@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "AutoFLC"
+abstract: >-
+  A Docker-based tool that automatically converts C source code
+  into PlantUML flowcharts using an LLM backend, with input via
+  ZIP upload or a GitHub repository/branch link.
+version: 1.0.0
+license: MIT
+repository-code: "https://github.com/dfjdkjkdf/AutoFLC"
+authors:
+  - family-names: "FILL-IN-LAST-NAME"
+    given-names: "FILL-IN-FIRST-NAME"
