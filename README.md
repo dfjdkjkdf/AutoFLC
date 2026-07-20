@@ -8,6 +8,8 @@ Language: **English** | [中文](README.zh-CN.md)
 
 https://github.com/user-attachments/assets/26ba76af-d3f8-46e5-b9cc-9fdef28b29a0
 
+> 🎥 The demo video above only shows the **ZIP upload** flow. The **GitHub link** input described below was added afterwards and isn't shown in the video, but works the same way once a task is submitted.
+
 AutoFLC is a Docker-based tool that automatically converts C source code — uploaded as a ZIP, or pulled directly from a **GitHub repository/branch link** — into PlantUML flowcharts. It integrates a Streamlit frontend, an OpenAI-compatible multi-model LLM backend (OpenAI, OpenRouter, Ollama, ...), and a PlantUML rendering engine.
 
 ## 📂 Directory Structure

@@ -8,6 +8,8 @@
 
 https://github.com/user-attachments/assets/26ba76af-d3f8-46e5-b9cc-9fdef28b29a0
 
+> 🎥 上面这个演示视频里只展示了 **上传 ZIP** 这一条流程。下面提到的 **GitHub 链接** 输入方式是后来加的,视频里没有演示,但提交任务之后的流程是完全一样的。
+
 AutoFLC 是一个基于 Docker 的工具,可以自动把 C 语言源代码——无论是上传的 ZIP 包,还是直接拉取的 **GitHub 仓库/分支链接**——转换成 PlantUML 流程图。它集成了 Streamlit 前端、兼容 OpenAI 接口的多模型 LLM 后端(OpenAI、OpenRouter、Ollama 等),以及一个 PlantUML 渲染引擎。
 
 ## 📂 目录结构
