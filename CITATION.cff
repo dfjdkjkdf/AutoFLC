@@ -1,5 +1,8 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: >-
+  If you use this software, please cite it as below. This is the
+  software artifact for the paper "AutoFLC: An LLM-Based Flowchart
+  Generation Tool for Legacy Code Repository" (under review).
 type: software
 title: "AutoFLC"
 abstract: >-
@@ -10,5 +13,23 @@ version: 1.0.0
 license: MIT
 repository-code: "https://github.com/dfjdkjkdf/AutoFLC"
 authors:
-  - family-names: "FILL-IN-LAST-NAME"
-    given-names: "FILL-IN-FIRST-NAME"
+  - family-names: "Luo"
+    given-names: "Yixing"
+    affiliation: "Beijing Institute of Control Engineering; Beijing Key Laboratory of Trustworthy Code Large Language Models"
+    email: "luoyi_xing@126.com"
+  - family-names: "Yang"
+    given-names: "Longxing"
+    affiliation: "Beijing Institute of Control Engineering; Beijing Key Laboratory of Trustworthy Code Large Language Models"
+    email: "yanglongxing1995@gmail.com"
+  - family-names: "Li"
+    given-names: "Xiaofeng"
+    affiliation: "Beijing Institute of Control Engineering; Beijing Key Laboratory of Trustworthy Code Large Language Models"
+    email: "li_x_feng@126.com"
+  - family-names: "Gu"
+    given-names: "Bin"
+    affiliation: "Beijing Institute of Control Engineering; Beijing Key Laboratory of Trustworthy Code Large Language Models"
+    email: "gubinbj@sina.com"
+  - family-names: "Jin"
+    given-names: "Zhi"
+    affiliation: "School of Computer Science, Peking University; School of Computer Science, Wuhan University"
+    email: "zhijin@pku.edu.cn"
